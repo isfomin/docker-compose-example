@@ -1,0 +1,78 @@
+version: "3.8"
+services:
+  spring-service-piovo:
+    #profiles:
+    #  - donotstart
+    container_name: spring-service-piovo
+    build: C:\Workspace\geo-gbq-b-spatial-computing-service-sb
+    env_file: C:\Workspace\geo-gbq-b-spatial-computing-service-sb\.env
+    ports:
+      - 8080:8080
+    volumes:
+      - sl-storage:/opt/tomcat
+    # logging:
+    #   # используемый драйвер логгирования
+    #   driver: "fluentd"
+    #   options:
+    #     # куда посылать лог-сообщения, необходимо что бы адрес 
+    #     # совпадал с настройками плагина forward
+    #     fluentd-address: localhost:24224
+    #     # теги используются для маршрутизации лог-сообщений
+    #     tag: spring.piovo
+    depends_on:
+      fluentd:
+        condition: service_healthy
+    links:
+      - "fluentd"
+
+  fluentd:
+    container_name: fluentd
+    image: govtechsg/fluentd-elasticsearch
+    ports:
+      # необходимо открыть порты, которые используются плагином forward
+      - "24224:24224"
+      - "24225:24225"
+      - "24224:24224/udp"
+    volumes:
+      # добавляем конфигурацию в контейнер
+      - ./fluentd:/fluentd/etc
+      - sl-storage:/opt/logs
+      - ./fluentd/test.log:/opt/test.log
+    environment:
+      - FLUENTD_CONF=fluentd.conf
+    links:
+      - "elasticsearch"
+    depends_on:
+      - elasticsearch
+    healthcheck:
+        test: ["CMD-SHELL", "nc -zvw3 127.0.0.1 24224 || exit 1"]
+        interval: 5s
+        timeout: 5s
+        retries: 15
+
+  elasticsearch:
+    container_name: elasticsearch
+    image: elasticsearch:8.4.2
+    ports:
+      - "9200:9200"
+    expose:
+      - "9200"
+    environment:
+      - "discovery.type=single-node"
+      - "xpack.security.enabled=false"
+
+  kibana:
+    container_name: kibana
+    image: kibana:8.4.2
+    depends_on:
+      - "elasticsearch"
+    ports:
+      - "5601:5601"
+    volumes:
+      - sl-storage:/opt/tomcat/logs
+    links:
+      - "elasticsearch"
+      
+volumes:
+  sl-storage:
+    external: false

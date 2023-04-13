@@ -1,0 +1,95 @@
+version: "3.8"
+services:
+  spring-service:
+    container_name: spring-service
+    build: C:\Workspace\geo-gbq-b-afs-search-sb
+    ports:
+      - 8080:8080
+    depends_on:
+      - fluent-bit
+      - fluentd
+    links:
+      - "fluentd"
+    volumes:
+      - slurm-storage:/opt/tomcat/logs
+    logging:
+      # используемый драйвер логгирования
+      driver: "fluentd"
+      options:
+        # куда посылать лог-сообщения, необходимо что бы адрес 
+        # совпадал с настройками плагина forward
+        fluentd-address: localhost:24224
+        # теги используются для маршрутизации лог-сообщений
+        tag: spring.logs
+    networks:
+      - main
+
+  fluentd:
+    container_name: fluentd
+    build: ./fluentd
+    ports:
+      # необходимо открыть порты, которые используются плагином forward
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      # добавляем конфигурацию в контейнер
+      - ./fluentd:/fluentd/etc
+      - slurm-storage:/opt/logs
+    environment:
+      - FLUENTD_CONF=fluentd.conf
+    links:
+      - "elasticsearch"
+    depends_on:
+      - elasticsearch
+
+  # fluent-bit:
+  #   container_name: fluent-bit
+  #   image: fluent/fluent-bit
+  #   ports:
+  #     # необходимо открыть порты, которые используются плагином forward
+  #     - 24224:24224
+  #     - 24224:24224/udp
+  #   volumes:
+  #     # добавляем конфигурацию в контейнер
+  #     - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+  #     - ./fluent-bit/parsers-multiline.conf:/fluent-bit/parsers/parsers-multiline.conf
+  #     - slurm-storage:/opt/logs
+  #   depends_on:
+  #     - elasticsearch
+  #   networks:
+  #     - main
+
+  elasticsearch:
+    container_name: elasticsearch_2
+    image: elasticsearch:8.4.2
+    ports:
+      - "9200:9200"
+    expose:
+      - 9200
+    environment:
+      - "discovery.type=single-node"
+      - "xpack.security.enabled=false"
+    networks:
+      - main
+
+  kibana:
+    container_name: kibana_2
+    image: kibana:8.4.2
+    depends_on:
+      - "elasticsearch"
+    ports:
+      - "5601:5601"
+    volumes:
+      - slurm-storage:/opt/tomcat/logs
+    links:
+      - "elasticsearch"
+    networks:
+      - main
+      
+volumes:
+  slurm-storage:
+    external: false
+
+networks:
+  main:
+    driver: bridge
